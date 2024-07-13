@@ -23,6 +23,40 @@ export function isBloom(bloom: string): boolean {
   return false;
 }
 
+export function isBloomAllSetInPositions(bloom: string, bitPositions: number[]): boolean {
+  const bloomLengthMinusOne = bloom.length - 1;
+
+  for (let i = 0; i < bitPositions.length; i++) {
+    const bitpos = bitPositions[i];
+    // test if bitpos in bloom is active
+    const code = codePointToInt(
+        bloom.charCodeAt(bloomLengthMinusOne - Math.floor(bitpos / 4)),
+    );
+    const offset = 1 << (bitpos % 4);
+
+    if ((code & offset) !== offset) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function calculateBitPositions(value: string | Uint8Array): number[] {
+  if (typeof value === 'object' && value.constructor === Uint8Array) {
+    value = bytesToHex(value);
+  }
+  const hash = keccak256(value).replace('0x', '');
+  const bitPoss = []  ;
+  for (let i = 0; i < 12; i += 4) {
+    // calculate bit position in bloom filter that must be active
+    const bitpos =
+        ((parseInt(hash.substr(i, 2), 16) << 8) +
+            parseInt(hash.substr(i + 2, 2), 16)) &
+        2047;
+    bitPoss.push(bitpos);
+  }
+  return bitPoss;
+}
 /**
  * Returns true if the value is part of the given bloom
  * note: false positives are possible.
@@ -30,31 +64,8 @@ export function isBloom(bloom: string): boolean {
  * @param value The value
  */
 export function isInBloom(bloom: string, value: string | Uint8Array): boolean {
-  if (typeof value === 'object' && value.constructor === Uint8Array) {
-    value = bytesToHex(value);
-  }
-
-  const hash = keccak256(value).replace('0x', '');
-
-  for (let i = 0; i < 12; i += 4) {
-    // calculate bit position in bloom filter that must be active
-    const bitpos =
-      ((parseInt(hash.substr(i, 2), 16) << 8) +
-        parseInt(hash.substr(i + 2, 2), 16)) &
-      2047;
-
-    // test if bitpos in bloom is active
-    const code = codePointToInt(
-      bloom.charCodeAt(bloom.length - 1 - Math.floor(bitpos / 4)),
-    );
-    const offset = 1 << bitpos % 4;
-
-    if ((code & offset) !== offset) {
-      return false;
-    }
-  }
-
-  return true;
+  const bitPositions = calculateBitPositions(value);
+  return isBloomAllSetInPositions(bloom, bitPositions);
 }
 
 /**
